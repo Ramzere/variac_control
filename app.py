@@ -367,10 +367,17 @@ def motor_speed(delay_us):
 
 @app.route('/api/shutdown', methods=['POST'])
 def shutdown():
+    import platform
     def stop_server():
         time.sleep(2)
-        os.system("osascript -e 'tell application \"Safari\" to close (tabs of windows whose URL contains \"localhost:5001\")' 2>/dev/null")
-        os.system("osascript -e 'delay 1' -e 'tell application \"Terminal\" to close (every window whose name contains \"launch\")' &")
+        system = platform.system()
+        if system == 'Darwin':  # Mac
+            os.system("osascript -e 'tell application \"Safari\" to close (tabs of windows whose URL contains \"localhost:5001\")' 2>/dev/null")
+            os.system("osascript -e 'delay 1' -e 'tell application \"Terminal\" to close (every window whose name contains \"launch\")' &")
+        elif system == 'Windows':
+            # Ferme le navigateur et le terminal Windows
+            os.system(f'taskkill /F /FI "WINDOWTITLE eq *variac*" >nul 2>&1')
+            os.system('taskkill /F /IM cmd.exe >nul 2>&1')
         time.sleep(0.5)
         os.kill(os.getpid(), 9)
     threading.Thread(target=stop_server, daemon=True).start()

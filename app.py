@@ -303,6 +303,68 @@ def set_cycle():
     state['cycle_config'].update(data)
     return jsonify({'status': 'ok'})
 
+
+# ── Routes moteur direct ──────────────────────────────────────────────────────
+@app.route('/api/motor/go/<int:angle>', methods=['POST'])
+def motor_go(angle):
+    if state['arduino'] is None:
+        return jsonify({'ok': False, 'response': 'Arduino not connected'})
+    angle = max(0, min(340, angle))
+    try:
+        state['arduino'].reset_input_buffer()
+        state['arduino'].write(f'ANGLE:{angle}\n'.encode())
+        # Lire toutes les lignes jusqu'à ACK
+        response = ''
+        for _ in range(15):
+            line = state['arduino'].readline().decode().strip()
+            if line.startswith('ACK:'):
+                response = line
+                break
+            if not line:
+                break
+        ok = response.startswith('ACK:')
+        # Extraire la position en degrés depuis les micro-pas
+        if ok:
+            microsteps = int(response.split(':')[1])
+            steps_per_rev  = 200
+            microstep      = 16
+            angle_actual   = round(microsteps * 360 / (steps_per_rev * microstep), 1)
+        else:
+            angle_actual = angle
+        return jsonify({'ok': ok, 'angle': angle_actual, 'response': response})
+    except Exception as e:
+        return jsonify({'ok': False, 'response': str(e)})
+
+@app.route('/api/motor/reset', methods=['POST'])
+def motor_reset():
+    """Remet la position Arduino à 0 sans bouger le moteur."""
+    if state['arduino'] is None:
+        return jsonify({'ok': False, 'response': 'Arduino not connected'})
+    try:
+        state['arduino'].reset_input_buffer()
+        state['arduino'].write(b'RESETPOS\n')
+        time.sleep(0.3)
+        response = state['arduino'].readline().decode().strip()
+        ok = response == 'RESET_OK'
+        return jsonify({'ok': ok, 'response': response})
+    except Exception as e:
+        return jsonify({'ok': False, 'response': str(e)})
+
+@app.route('/api/motor/speed/<int:delay_us>', methods=['POST'])
+def motor_speed(delay_us):
+    """Change la vitesse du moteur (µs entre chaque micro-pas)."""
+    if state['arduino'] is None:
+        return jsonify({'ok': False, 'response': 'Arduino not connected'})
+    delay_us = max(50, min(5000, delay_us))
+    try:
+        state['arduino'].reset_input_buffer()
+        state['arduino'].write(f'SPEED:{delay_us}\n'.encode())
+        time.sleep(0.3)
+        response = state['arduino'].readline().decode().strip()
+        return jsonify({'ok': True, 'response': response})
+    except Exception as e:
+        return jsonify({'ok': False, 'response': str(e)})
+
 @app.route('/api/shutdown', methods=['POST'])
 def shutdown():
     def stop_server():

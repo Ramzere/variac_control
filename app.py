@@ -46,6 +46,12 @@ SENSORS = {
     }
 }
 
+# ── Config capteur CSV ───────────────────────────────────────────────────────
+# Le dossier CalexConfig/data est toujours dans le même dossier que app.py
+SENSOR_CSV_DIR = os.path.join(os.path.dirname(__file__), 'CalexConfig', 'data')
+SENSOR_CSV_COLUMN = int(config.get('sensor_csv', 'column', fallback='3'))  # Filtered Temperature
+os.makedirs(SENSOR_CSV_DIR, exist_ok=True)  # crée le dossier si absent
+
 # Dossier logs
 LOG_DIR = os.path.join(os.path.dirname(__file__), 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -70,6 +76,8 @@ state = {
     'arduino_port':   None,
     'arduino':        None,
     'active_sensor':  'sensor_1',   # sonde active par défaut
+    'sensor_csv_ok':  False,
+    'sensor_csv_file': None,
     'cycle_config': {
         'temp_max':   500,
         'hold_max':   30,
@@ -139,17 +147,49 @@ def send_to_arduino(cmd):
     return None
 
 # ── Lecture température ───────────────────────────────────────────────────────
+def get_latest_csv():
+    """Retourne le fichier CSV le plus récent dans SENSOR_CSV_DIR."""
+    if not SENSOR_CSV_DIR or not os.path.isdir(SENSOR_CSV_DIR):
+        return None
+    files = [
+        os.path.join(SENSOR_CSV_DIR, f)
+        for f in os.listdir(SENSOR_CSV_DIR)
+        if f.lower().endswith('.csv')
+    ]
+    if not files:
+        return None
+    return max(files, key=os.path.getmtime)
+
 def read_temperature():
-    # TODO : remplacer par lecture réelle du port série de la sonde active
-    # sensor = active_sensor()
-    # if sensor['serial']:
-    #     line = sensor['serial'].readline().decode().strip()
-    #     return float(line.split(',')[1])  # adapter selon le format CSV réel
-    target  = state['target_temp']
-    current = state['current_temp']
-    diff    = target - current
-    noise   = (time.time() % 1 - 0.5) * 2
-    state['current_temp'] = current + diff * 0.05 + noise
+    """Lit la dernière température du CSV CalexConfig le plus récent."""
+    csv_path = get_latest_csv()
+    if not csv_path:
+        # Fallback simulation si pas de fichier
+        target  = state['target_temp']
+        current = state['current_temp']
+        diff    = target - current
+        noise   = (time.time() % 1 - 0.5) * 2
+        state['current_temp'] = current + diff * 0.05 + noise
+        return state['current_temp']
+    try:
+        with open(csv_path, 'r', encoding='utf-8-sig') as f:
+            lines = f.readlines()
+        # Cherche la dernière ligne avec des données valides
+        # Format : Time, Sample No., Unfiltered, Filtered, Sensor
+        # Les 5 premières lignes sont des headers
+        for line in reversed(lines):
+            parts = line.strip().split(',')
+            if len(parts) >= SENSOR_CSV_COLUMN + 1:
+                try:
+                    temp = float(parts[SENSOR_CSV_COLUMN])
+                    state['current_temp'] = temp
+                    state['sensor_csv_ok'] = True
+                    return temp
+                except ValueError:
+                    continue
+    except Exception as e:
+        print(f"CSV read error: {e}")
+        state['sensor_csv_ok'] = False
     return state['current_temp']
 
 # ── Log CSV ───────────────────────────────────────────────────────────────────
@@ -214,6 +254,8 @@ def status():
         'sensor_max':     sensor['max_temp'],
         'sensor_port':    sensor['port'],
         'sensor_ok':      sensor['serial'] is not None,
+        'sensor_csv_ok':  state['sensor_csv_ok'],
+        'sensor_csv_file': os.path.basename(get_latest_csv()) if get_latest_csv() else None,
         'sensors':        {k: {
             'id':       v['id'],
             'name':     v['name'],
@@ -364,6 +406,30 @@ def motor_speed(delay_us):
         return jsonify({'ok': True, 'response': response})
     except Exception as e:
         return jsonify({'ok': False, 'response': str(e)})
+
+@app.route('/api/test_sensor', methods=['POST'])
+def test_sensor():
+    """Vérifie que le fichier CSV CalexConfig est lisible et retourne la dernière temp."""
+    csv_path = get_latest_csv()
+    if not csv_path:
+        msg = 'No CSV file found'
+        if not SENSOR_CSV_DIR:
+            msg = 'csv_dir not configured in config.ini'
+        elif not os.path.isdir(SENSOR_CSV_DIR):
+            msg = f'Folder not found: {SENSOR_CSV_DIR}'
+        return jsonify({'ok': False, 'response': msg, 'temp': None, 'file': None})
+    try:
+        temp = read_temperature()
+        filename = os.path.basename(csv_path)
+        mod_time = datetime.fromtimestamp(os.path.getmtime(csv_path)).strftime('%H:%M:%S')
+        return jsonify({
+            'ok': True,
+            'response': f'{temp:.1f}°C — last update: {mod_time}',
+            'temp': temp,
+            'file': filename
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'response': str(e), 'temp': None, 'file': None})
 
 @app.route('/api/shutdown', methods=['POST'])
 def shutdown():

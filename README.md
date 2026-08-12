@@ -270,3 +270,7 @@ The PID loop runs in Python, not on the Arduino. The Arduino only receives an an
 - **Temperature range:** 0°C to 1000°C (depending on sensor)
 - **Project:** Internship — CESI École d'ingénieurs (2025–2026)
 - **Supervisor:** Anne
+
+
+
+xattr -d com.apple.quarantine "/Users/remirodriguez/Documents/CESI/A4/MI/Travail/variac_control/launch.command" && chmod +x "/Users/remirodriguez/Documents/CESI/A4/MI/Travail/variac_control/launch.command"

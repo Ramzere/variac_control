@@ -144,7 +144,6 @@
   <div class="tab" onclick="tab('manual')">🎛️ Manual</div>
   <div class="tab" onclick="tab('cycles')">🔄 Cycles</div>
   <div class="tab" onclick="tab('log')">📋 Log</div>
-  <div class="tab" onclick="tab('motor')">⚙️ Motor</div>
 </div>
 
 <!-- ── AUTOTEST ─────────────────────────────────────────────────────────── -->
@@ -171,20 +170,25 @@
       <div class="chk-badge" id="badge-arduino">Waiting</div>
     </div>
     <div class="chk">
-      <div class="chk-ico wait" id="ico-motor">?</div>
+      <div class="chk-ico skip" id="ico-motor">–</div>
       <div style="flex:1">
-        <div class="chk-label">Motor test</div>
-        <div class="chk-sub" id="sub-motor">Sends ANGLE:10, waits for ACK, returns to 0°</div>
+        <div class="chk-label" style="color:#78716c">Motor test</div>
+        <div class="chk-sub" id="sub-motor">Not available yet — TB6600 pending</div>
       </div>
-      <div class="chk-badge" id="badge-motor">Waiting</div>
+      <div class="chk-badge" id="badge-motor" style="color:#78716c">Skipped</div>
     </div>
     <div class="chk">
-      <div class="chk-ico skip" id="ico-temp">–</div>
+      <div class="chk-ico wait" id="ico-temp">?</div>
       <div style="flex:1">
-        <div class="chk-label" style="color:#78716c">Temperature sensor</div>
-        <div class="chk-sub" id="sub-temp">Not available yet — sensor format TBD</div>
+        <div class="chk-label">Temperature sensor — CalexConfig CSV</div>
+        <div class="chk-sub" id="sub-temp">Launch CalexConfig and start measurement before running this test</div>
       </div>
-      <div class="chk-badge" id="badge-temp" style="color:#78716c">Skipped</div>
+      <div class="chk-badge" id="badge-temp">Waiting</div>
+    </div>
+    <!-- CalexConfig notice -->
+    <div id="calex-notice" style="margin:8px 0 0 42px;padding:10px 14px;background:#1e3a5f;border-radius:8px;border-left:3px solid #3b82f6;display:none">
+      <div style="font-size:12px;font-weight:600;color:#60a5fa;margin-bottom:4px">⚠ CalexConfig required</div>
+      <div style="font-size:12px;color:#94a3b8">1. Open <strong style="color:#e2e8f0">CalexConfig</strong> application<br>2. Start the temperature measurement<br>3. Make sure the CSV is saved in the configured folder<br>4. Run autotest again</div>
     </div>
   </div>
   <div class="btn-row">
@@ -278,87 +282,6 @@
   </div>
 </div>
 
-
-<!-- ── MOTOR CONTROL ──────────────────────────────────────────────────── -->
-<div class="panel" id="panel-motor">
-
-  <!-- Current position -->
-  <div class="g3">
-    <div class="card" style="margin:0">
-      <div class="card-title">Current position</div>
-      <div class="card-value" id="mot-pos">0<span class="card-unit">°</span></div>
-    </div>
-    <div class="card" style="margin:0">
-      <div class="card-title">Target position</div>
-      <div class="card-value" id="mot-tgt-disp">0<span class="card-unit">°</span></div>
-    </div>
-    <div class="card" style="margin:0">
-      <div class="card-title">Status</div>
-      <div class="card-value" style="font-size:16px;padding-top:8px" id="mot-status">Idle</div>
-    </div>
-  </div>
-
-  <!-- Angle input -->
-  <div class="card">
-    <label>Target angle (0° – 340°)</label>
-    <input type="range" min="0" max="340" value="0" id="mot-slider"
-           oninput="updateMotorTarget(this.value)">
-    <div style="display:flex;gap:12px;align-items:center;margin-top:10px">
-      <input type="number" min="0" max="340" value="0" id="mot-num"
-             oninput="updateMotorTarget(this.value)" style="width:120px">
-      <span style="color:#94a3b8">°</span>
-      <button class="btn btn-blue" onclick="sendAngle()" style="margin-left:8px">
-        ➤ Go to position
-      </button>
-    </div>
-  </div>
-
-  <!-- Quick positions -->
-  <div class="card">
-    <div class="card-title" style="margin-bottom:12px">Quick positions</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-gray" onclick="goToPos(0)">0°</button>
-      <button class="btn btn-gray" onclick="goToPos(45)">45°</button>
-      <button class="btn btn-gray" onclick="goToPos(90)">90°</button>
-      <button class="btn btn-gray" onclick="goToPos(135)">135°</button>
-      <button class="btn btn-gray" onclick="goToPos(170)">170° (mid)</button>
-      <button class="btn btn-gray" onclick="goToPos(250)">250°</button>
-      <button class="btn btn-gray" onclick="goToPos(340)">340° (max)</button>
-    </div>
-  </div>
-
-  <!-- Reset + speed -->
-  <div class="card">
-    <div class="card-title" style="margin-bottom:12px">Settings</div>
-    <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
-      <div>
-        <label>Motor speed (µs delay)</label>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
-          <input type="number" id="mot-speed" value="150" min="50" max="5000" style="width:100px">
-          <button class="btn btn-gray" onclick="setMotorSpeed()">Set speed</button>
-        </div>
-        <div style="font-size:11px;color:#475569;margin-top:4px">50 = fast · 5000 = slow</div>
-      </div>
-      <div>
-        <label>Reset position</label>
-        <div style="margin-top:4px">
-          <button class="btn btn-red" onclick="resetPosition()">⟳ Set current as 0°</button>
-        </div>
-        <div style="font-size:11px;color:#475569;margin-top:4px">Current position becomes the new zero</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Response log -->
-  <div class="card">
-    <div class="card-title" style="margin-bottom:8px">Motor log</div>
-    <div id="mot-log" style="font-family:monospace;font-size:12px;color:#94a3b8;max-height:150px;overflow-y:auto">
-      <div style="color:#475569;font-style:italic">No commands sent yet</div>
-    </div>
-  </div>
-
-</div>
-
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 let sensorMin = 0;
@@ -386,7 +309,7 @@ socket.on('sensor_changed', d => {
 });
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
-const TABS = ['autotest','manual','cycles','log','motor'];
+const TABS = ['autotest','manual','cycles','log'];
 function tab(name) {
   document.querySelectorAll('.tab').forEach((t,i)   => t.classList.toggle('active', TABS[i]===name));
   document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', TABS[i]===name));
@@ -513,25 +436,21 @@ async function runAutotest() {
     }
   }
 
-  // ── Check motor ──────────────────────────────────────────────────────────
-  setChk('motor', 'spin', '⟳', 'Testing...', 'Sending ANGLE:10, waiting for ACK...');
+  // ── Check sensor CSV ─────────────────────────────────────────────────────
+  setChk('temp', 'spin', '⟳', 'Reading...', 'Looking for latest CalexConfig CSV...');
   await delay(400);
-  if (!scanRes.arduino_ok) {
-    setChk('motor', 'err', '✗', 'Skipped', 'Arduino not connected');
-    allOk = false;
+  const sensorRes = await fetch('/api/test_sensor', {method:'POST'}).then(r=>r.json());
+  if (sensorRes.ok) {
+    setChk('temp', 'ok', '✓', sensorRes.temp.toFixed(1) + '°C', 'File: ' + sensorRes.file + ' — ' + sensorRes.response);
+    document.getElementById('calex-notice').style.display = 'none';
   } else {
-    const motorRes = await fetch('/api/test_motor', {method:'POST'}).then(r=>r.json());
-    if (motorRes.ok) {
-      setChk('motor', 'ok', '✓', 'OK', 'Motor moved to 10° and returned to 0° — ACK received');
-    } else {
-      setChk('motor', 'err', '✗', 'No ACK', motorRes.response);
-      allOk = false;
-    }
+    setChk('temp', 'err', '✗', 'No data', sensorRes.response);
+    document.getElementById('calex-notice').style.display = 'block';
   }
 
   if (allOk) {
     sum.className = 'summary ok';
-    document.getElementById('summary-sub').textContent = '✅ All systems ready — ready to continue';
+    document.getElementById('summary-sub').textContent = '✅ Arduino connected and responding — ready to continue';
     document.getElementById('btn-cont').disabled = false;
   } else {
     sum.className = 'summary err';
@@ -609,71 +528,6 @@ const chart = new Chart(document.getElementById('chart').getContext('2d'), {
     }
   }
 });
-
-// ── Motor control ─────────────────────────────────────────────────────────────
-let motorTarget = 0;
-
-function updateMotorTarget(v) {
-  v = Math.min(340, Math.max(0, parseInt(v)||0));
-  document.getElementById('mot-slider').value = v;
-  document.getElementById('mot-num').value    = v;
-  document.getElementById('mot-tgt-disp').innerHTML = v + '<span class="card-unit">°</span>';
-  motorTarget = v;
-}
-
-async function sendAngle() {
-  setMotorStatus('Moving...');
-  addMotorLog('→ ANGLE:' + motorTarget);
-  const r = await fetch('/api/motor/go/' + motorTarget, {method:'POST'});
-  const d = await r.json();
-  if (d.ok) {
-    document.getElementById('mot-pos').innerHTML = d.angle + '<span class="card-unit">°</span>';
-    addMotorLog('✓ ACK — position: ' + d.angle + '°');
-    setMotorStatus('At ' + d.angle + '°');
-  } else {
-    addMotorLog('✗ Error: ' + d.response);
-    setMotorStatus('Error');
-  }
-}
-
-function goToPos(angle) {
-  updateMotorTarget(angle);
-  sendAngle();
-}
-
-async function resetPosition() {
-  if (!confirm('Set current position as 0°? The motor will not move.')) return;
-  const r = await fetch('/api/motor/reset', {method:'POST'});
-  const d = await r.json();
-  if (d.ok) {
-    document.getElementById('mot-pos').innerHTML = '0<span class="card-unit">°</span>';
-    updateMotorTarget(0);
-    addMotorLog('⟳ Position reset to 0°');
-    setMotorStatus('Reset — at 0°');
-  }
-}
-
-async function setMotorSpeed() {
-  const speed = document.getElementById('mot-speed').value;
-  const r = await fetch('/api/motor/speed/' + speed, {method:'POST'});
-  const d = await r.json();
-  addMotorLog('⚡ Speed set to ' + speed + 'µs');
-}
-
-function setMotorStatus(txt) {
-  document.getElementById('mot-status').textContent = txt;
-}
-
-function addMotorLog(msg) {
-  const box = document.getElementById('mot-log');
-  if (box.firstChild && box.firstChild.style && box.firstChild.style.fontStyle === 'italic') box.innerHTML = '';
-  const el = document.createElement('div');
-  const now = new Date().toTimeString().slice(0,8);
-  el.style.cssText = 'padding:3px 0;border-bottom:1px solid #1e293b';
-  el.textContent = now + '  ' + msg;
-  box.insertBefore(el, box.firstChild);
-}
-
 </script>
 </body>
 </html>

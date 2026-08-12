@@ -347,6 +347,42 @@ def set_cycle():
 
 
 # ── Routes moteur direct ──────────────────────────────────────────────────────
+
+@app.route('/api/test_motor', methods=['POST'])
+def test_motor():
+    if state['arduino'] is None:
+        return jsonify({'ok': False, 'response': 'Arduino not connected'})
+    try:
+        state['arduino'].timeout = 5
+        state['arduino'].reset_input_buffer()
+        state['arduino'].write(b'ANGLE:10\n')
+        # Lire toutes les lignes jusqu'à ACK ou timeout 5s
+        response = ''
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            line = state['arduino'].readline().decode().strip()
+            if line.startswith('ACK:'):
+                response = line
+                break
+            if not line:
+                time.sleep(0.1)
+        ok = response.startswith('ACK:')
+        if ok:
+            # Revenir à 0
+            state['arduino'].reset_input_buffer()
+            state['arduino'].write(b'ANGLE:0\n')
+            deadline2 = time.time() + 5
+            while time.time() < deadline2:
+                line = state['arduino'].readline().decode().strip()
+                if line.startswith('ACK:') or not line:
+                    break
+        return jsonify({
+            'ok': ok,
+            'response': response if ok else 'No ACK within 5s — check TB6600 wiring and power'
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'response': str(e)})
+
 @app.route('/api/motor/go/<int:angle>', methods=['POST'])
 def motor_go(angle):
     if state['arduino'] is None:

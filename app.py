@@ -387,7 +387,7 @@ def test_motor():
 def motor_go(angle):
     if state['arduino'] is None:
         return jsonify({'ok': False, 'response': 'Arduino not connected'})
-    angle = max(0, min(340, angle))
+    angle = max(0, min(380, angle))
     try:
         state['arduino'].reset_input_buffer()
         state['arduino'].write(f'ANGLE:{angle}\n'.encode())

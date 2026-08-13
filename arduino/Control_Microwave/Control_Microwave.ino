@@ -4,11 +4,11 @@
 
 #define MICROSTEP      16
 #define STEPS_PER_REV  200
-#define MAX_DEGREES    340
-#define MAX_STEPS      (200L * 16L * 340L / 360L)  // = 3022 — long explicite
+#define MAX_DEGREES    380
+#define MAX_STEPS      (200L * 16L * 380L / 360L)  // = 3022 — long explicite
 
 long currentPosition = 0;
-int  stepDelay       = 150;
+int  stepDelay       = 500;
 
 void stepMotor(long steps, bool clockwise) {
   digitalWrite(DIR_PIN, clockwise ? HIGH : LOW);

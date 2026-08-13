@@ -93,6 +93,11 @@ def active_sensor():
 
 # ── Détection ports ───────────────────────────────────────────────────────────
 def find_arduino():
+    # Si port forcé dans config.ini, l'utiliser directement
+    forced = config.get('arduino', 'port', fallback='')
+    if forced:
+        return forced.strip()
+    # Sinon détection automatique
     for port in serial.tools.list_ports.comports():
         desc = port.description.lower()
         if any(x in desc for x in ['arduino', 'ch340', 'usb serial', 'usbserial']):

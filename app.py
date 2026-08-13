@@ -54,6 +54,17 @@ os.makedirs(SENSOR_CSV_DIR, exist_ok=True)  # crée le dossier si absent
 
 # Dossier logs
 LOG_DIR = os.path.join(os.path.dirname(__file__), 'logs')
+# ── Nettoyage du dossier CalexConfig/data au démarrage ───────────────────────
+def clean_sensor_data_dir():
+    if os.path.isdir(SENSOR_CSV_DIR):
+        files = [f for f in os.listdir(SENSOR_CSV_DIR) if f.lower().endswith('.csv')]
+        for f in files:
+            try:
+                os.remove(os.path.join(SENSOR_CSV_DIR, f))
+            except Exception as e:
+                print(f"Could not delete {f}: {e}")
+        if files:
+            print(f"Cleaned {len(files)} old CSV file(s) from {SENSOR_CSV_DIR}")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 print(f"Config : {config_path}")
@@ -221,20 +232,59 @@ def write_log(temp, target, angle, mode):
 
 # ── Boucle de contrôle ────────────────────────────────────────────────────────
 def control_loop():
+    integral = 0.0
+    prev_error = 0.0
+    # Position moteur : 0 = 0V, MAX_ANGLE = tension max
+    MAX_ANGLE = 340
+
     while True:
         if state['running']:
-            temp = read_temperature()
-            write_log(temp, state['target_temp'], state['current_angle'], state['mode'])
+            temp   = read_temperature()
+            target = state['target_temp']
+            error  = target - temp
             sensor = active_sensor()
+
+            # ── PID ────────────────────────────────────────────────────────
+            if target > 0:
+                if abs(error) > BANGBANG:
+                    # Bang-bang : pleine puissance vers la cible
+                    new_angle = MAX_ANGLE if error > 0 else 0
+                    integral = 0.0  # reset intégral en bang-bang
+                else:
+                    # PID
+                    integral   += error * 0.5          # 0.5s de période
+                    derivative  = (error - prev_error) / 0.5
+                    output      = PID_P * error + PID_I * integral + PID_D * derivative
+                    # Convertir output en angle (0–340°)
+                    new_angle   = state['current_angle'] + int(output)
+                    new_angle   = max(0, min(MAX_ANGLE, new_angle))
+                prev_error = error
+
+                # Envoyer au moteur si la position a changé
+                if new_angle != state['current_angle']:
+                    resp = send_to_arduino(f'ANGLE:{new_angle}')
+                    if resp and resp.startswith('ACK:'):
+                        state['current_angle'] = new_angle
+            else:
+                # Cible à 0 — retour à zéro
+                if state['current_angle'] != 0:
+                    send_to_arduino('ANGLE:0')
+                    state['current_angle'] = 0
+                integral = 0.0
+
+            write_log(temp, target, state['current_angle'], state['mode'])
             socketio.emit('update', {
                 'temp':       round(temp, 1),
-                'target':     state['target_temp'],
+                'target':     target,
                 'angle':      state['current_angle'],
                 'mode':       state['mode'],
                 'time':       datetime.now().strftime('%H:%M:%S'),
                 'sensor_min': sensor['min_temp'],
                 'sensor_max': sensor['max_temp'],
             })
+        else:
+            integral   = 0.0
+            prev_error = 0.0
         time.sleep(0.5)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -334,7 +384,10 @@ def start():
 @app.route('/api/stop', methods=['POST'])
 def stop():
     state['running'] = False
-    send_to_arduino('STOP')
+    # Retourne à 0° sans couper le courant moteur
+    resp = send_to_arduino('ANGLE:0')
+    if resp and resp.startswith('ACK:'):
+        state['current_angle'] = 0
     return jsonify({'status': 'stopped'})
 
 @app.route('/api/set_target/<float:temp>', methods=['POST'])
@@ -519,6 +572,7 @@ def on_connect(auth=None):
 
 # ── Démarrage ─────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
+    clean_sensor_data_dir()
     print("=" * 44)
     print("   VARIAC CONTROL SYSTEM")
     print("=" * 44)

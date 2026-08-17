@@ -1,0 +1,26 @@
+timestamp,sensor,measured_temp,target_temp,angle,mode
+2026-08-14 11:31:02.469,Sensor A — High range,-0.06,0.0,0,manual
+2026-08-14 11:31:02.975,Sensor A — High range,0.89,0.0,0,manual
+2026-08-14 11:31:03.481,Sensor A — High range,0.81,0.0,0,manual
+2026-08-14 11:31:03.987,Sensor A — High range,1.75,0.0,0,manual
+2026-08-14 11:31:04.488,Sensor A — High range,1.64,0.0,0,manual
+2026-08-14 11:31:04.991,Sensor A — High range,2.54,0.0,0,manual
+2026-08-14 11:31:05.498,Sensor A — High range,2.41,0.0,0,manual
+2026-08-14 11:31:06.001,Sensor A — High range,1.29,0.0,0,manual
+2026-08-14 11:31:06.512,Sensor A — High range,1.25,0.0,0,manual
+2026-08-14 11:31:07.018,Sensor A — High range,0.23,0.0,0,manual
+2026-08-14 11:31:07.523,Sensor A — High range,0.26,0.0,0,manual
+2026-08-14 11:31:08.029,Sensor A — High range,-0.69,0.0,0,manual
+2026-08-14 11:31:08.533,Sensor A — High range,-0.59,0.0,0,manual
+2026-08-14 11:31:09.040,Sensor A — High range,-1.48,0.0,0,manual
+2026-08-14 11:31:09.546,Sensor A — High range,-1.31,0.0,0,manual
+2026-08-14 11:31:10.050,Sensor A — High range,-2.15,0.0,0,manual
+2026-08-14 11:31:10.556,Sensor A — High range,-1.93,0.0,0,manual
+2026-08-14 11:31:11.062,Sensor A — High range,-2.7,0.0,0,manual
+2026-08-14 11:31:11.568,Sensor A — High range,-2.43,0.0,0,manual
+2026-08-14 11:31:12.074,Sensor A — High range,-3.16,0.0,0,manual
+2026-08-14 11:31:12.577,Sensor A — High range,-2.85,0.0,0,manual
+2026-08-14 11:31:13.083,Sensor A — High range,-3.54,0.0,0,manual
+2026-08-14 11:31:13.584,Sensor A — High range,-3.19,0.0,0,manual
+2026-08-14 11:31:14.088,Sensor A — High range,-3.86,0.0,0,manual
+2026-08-14 11:31:14.592,Sensor A — High range,-3.48,0.0,0,manual

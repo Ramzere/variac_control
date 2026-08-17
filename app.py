@@ -4,6 +4,7 @@ import csv
 import threading
 import configparser
 from datetime import datetime
+import platform
 
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit

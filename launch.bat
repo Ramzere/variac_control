@@ -20,7 +20,7 @@ if not exist "%CONFIG%" (
 )
 
 for /f "tokens=1,* delims==" %%a in ('findstr /i "app_dir" "%CONFIG%"') do set APP_DIR=%%b
-PORT=5001
+set PORT=5001
 
 set APP_DIR=%APP_DIR: =%
 set PORT=%PORT: =%

@@ -515,6 +515,10 @@ def motor_speed(delay_us):
     """Change la vitesse du moteur (µs entre chaque micro-pas)."""
     if state['arduino'] is None:
         return jsonify({'ok': False, 'response': 'Arduino not connected'})
+    try:
+        delay_us = int(delay_us)
+    except ValueError:
+        return jsonify({'ok': False, 'response': 'invalid value'}), 400
     delay_us = max(50, min(5000, delay_us))
     try:
         state['arduino'].reset_input_buffer()

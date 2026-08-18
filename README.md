@@ -20,7 +20,8 @@ The system physically rotates the Variac knob using a stepper motor controlled b
 | Microcontroller | Arduino Nano CH340 USB-C | Receives commands, generates step pulses |
 | 3D coupler | PLA+ jaw coupler | Links motor shaft to Variac knob |
 | USB hub | UGREEN 4-port USB 3.0 | Single connection to PC |
-| Power supply | 12V 3A minimum | Powers motor via TB6600 |
+| Power supply | 12V–24V, 3A minimum | Powers motor via TB6600 |
+| Temperature sensor | CalexConfig compatible | 0–1000°C, CSV output |
 
 ---
 
@@ -39,7 +40,7 @@ The system physically rotates the Variac knob using a stepper motor controlled b
 
 | Supply | TB6600 | Wire color |
 |---|---|---|
-| +12V | VCC | Red |
+| +12V (or +24V) | VCC | Red |
 | GND | GND | Black |
 
 ### TB6600 → NEMA 23
@@ -99,13 +100,15 @@ pip install flask flask-socketio pyserial
 
 ```
 variac_control/
-├── app.py              # Flask server + PID + sensor reading
-├── config.ini          # Configuration (port, baudrate, sensors, PID)
-├── launch.command      # Mac launcher (double-click)
-├── launch.bat          # Windows launcher (double-click)
-├── logs/               # CSV data logs (auto-created)
+├── app.py                  # Flask server + PID + sensor reading
+├── config.ini              # Configuration (port, baudrate, sensors, PID)
+├── launch.command          # Mac launcher (double-click)
+├── launch.bat              # Windows launcher (double-click)
+├── CalexConfig/
+│   └── data/               # Drop CalexConfig CSV files here (Mac)
+├── logs/                   # CSV data logs (auto-created)
 └── templates/
-    └── index.html      # Web interface
+    └── index.html          # Web interface
 ```
 
 ---
@@ -115,7 +118,7 @@ variac_control/
 ### Mac
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/variac-control.git
+git clone https://github.com/Ramzere/variac_control.git
 cd variac-control/variac_control
 pip3 install flask flask-socketio pyserial
 chmod +x launch.command
@@ -127,7 +130,7 @@ Double-click `launch.command` — the browser opens automatically at `http://loc
 ### Windows
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/variac-control.git
+git clone https://github.com/Ramzere/variac_control.git
 cd variac-control\variac_control
 pip install flask flask-socketio pyserial
 ```
@@ -147,12 +150,10 @@ Edit `config.ini` to match your setup:
 host = 0.0.0.0
 port = 5001
 
-[paths]
-# Mac   : /Users/yourname/Documents/variac_control
-# Win   : C:\Users\yourname\Documents\variac_control
-app_dir = /Users/remirodriguez/Documents/CESI/A4/MI/Travail/variac_control
-
 [arduino]
+# Force port if auto-detection fails
+# Windows: port = COM5
+# Mac: port = /dev/tty.usbserial-110
 baudrate = 9600
 timeout = 2
 
@@ -163,27 +164,45 @@ d = 0.0
 bangbang_threshold = 20
 
 [sensor_1]
-name = Sensor A — Low range
+name = Sensor A — High range
 min_temp = 0
-max_temp = 400
+max_temp = 1000
 
 [sensor_2]
-name = Sensor B — High range
+name = Sensor B — Low range
 min_temp = 300
 max_temp = 800
+
+[sensor_csv]
+# Windows: path to CalexConfig output folder
+csv_dir = C:\Users\Rahul.Samyal\OneDrive - University of Limerick\Research\Documents\CalexConfig log files
+column = 3
 ```
+
+> On Mac the CSV folder defaults to `variac_control/CalexConfig/data/` automatically.
 
 ---
 
 ## Usage
 
 1. Connect Arduino Nano via USB hub
-2. Connect 12V power supply to TB6600
+2. Connect power supply (12V or 24V) to TB6600
 3. Launch the server (`launch.command` on Mac, `launch.bat` on Windows)
 4. Open `http://localhost:5001` in your browser
-5. Run **Autotest** — verifies serial port, Arduino communication, and motor response
-6. Select the active temperature sensor (Sensor A or B) from the header dropdown
-7. Use **Manual** mode or program **Cycles**
+5. Click **? Setup guide** in the top bar and follow the steps
+6. Run **Autotest** — verifies serial port, Arduino communication, motor and sensor
+7. Select the active temperature sensor (Sensor A or B) from the header dropdown
+8. Use **Manual** mode or program **Cycles**
+
+### Setup guide (startup procedure)
+
+1. Cut motor power — place jaw coupler on the Variac knob
+2. Power on motor supply — remove coupler without rotating
+3. Open CalexConfig and set output folder to the configured path
+4. Start temperature recording in CalexConfig
+5. Run Autotest — all checks must be green
+6. Place coupler back on the Variac knob
+7. Select the correct sensor from the header dropdown
 
 ### Interface tabs
 
@@ -213,35 +232,39 @@ max_temp = 800
 
 Two sensors supported — selected from the web interface header dropdown:
 
-| Sensor | Range | Connection |
+| Sensor | Range | Software |
 |---|---|---|
-| Sensor A | 0 – 400°C | USB-B cable |
-| Sensor B | 300 – 800°C | USB-B cable |
+| Sensor A | 0 – 1000°C | CalexConfig |
+| Sensor B | 300 – 800°C | TBD |
 
-Only one sensor active at a time. Switching automatically recalibrates the slider, chart Y-axis, and constrains the target temperature to the sensor range. Each session log file includes the sensor name.
+The system reads the **most recent CSV file** from the configured folder. Only one sensor is active at a time. Switching automatically recalibrates the slider, chart Y-axis, and constrains the target temperature to the sensor range.
 
-> **Note:** Sensor serial format (CSV columns, baud rate) to be confirmed once the sensor model is known. Update `read_temperature()` in `app.py` accordingly.
+**CalexConfig CSV format:**
+- 5 header rows to skip
+- Column 3 = Filtered Temperature (used by default)
+- Updated every second
 
 ---
 
 ## PID Control
 
-The PID loop runs in Python, not on the Arduino. The Arduino only receives an angle and moves the motor.
+The PID loop runs in Python. The Arduino only receives an angle command and moves the motor.
 
 **Strategy:**
-- **Phase 1 — Bang-bang:** motor runs at full speed until within 20°C of target
+- **Phase 1 — Bang-bang:** motor moves at full speed when error > threshold
 - **Phase 2 — PID:** fine-tunes motor angle to hold target temperature precisely
+- **Stop:** motor returns to 0° (0V output) without cutting power
 
 **Parameters (adjust in `config.ini`):**
 
-| Parameter | Default | Role |
+| Parameter | Value | Role |
 |---|---|---|
-| P | 1.2 | Corrects instantaneous error |
-| I | 0.05 | Corrects accumulated error |
+| P | 0.3 | Corrects instantaneous error |
+| I | 0.01 | Corrects accumulated error |
 | D | 0.0 | Anticipates rate of change |
-| bangbang_threshold | 20 | Switch from bang-bang to PID (°C) |
+| bangbang_threshold | 5 | Switch from bang-bang to PID (°C) |
 
-> Calibrate PID parameters on real hardware. First test with a neutral material before using carbon fibre.
+> Calibrate PID parameters on real hardware. Test with a safe material before using carbon fibre.
 
 ---
 
@@ -255,10 +278,12 @@ The PID loop runs in Python, not on the Arduino. The Arduino only receives an an
 | 3D coupler printed and fitted | ✅ Done |
 | Arduino firmware | ✅ Done |
 | Python server + web interface | ✅ Done |
-| Autotest (port + Arduino + motor) | ✅ Done |
+| Autotest (port + Arduino + motor + sensor) | ✅ Done |
 | Mac + Windows compatibility | ✅ Done |
+| Temperature sensor integration (CalexConfig) | ✅ Done |
+| Manual mode with PID | ✅ Done |
+| Cycle mode | ✅ Done |
 | PID calibration on real Variac | 🔲 To do |
-| Temperature sensor integration | 🔲 To do |
 | Carbon fibre thermal cycle tests | 🔲 To do |
 
 ---
@@ -267,10 +292,6 @@ The PID loop runs in Python, not on the Arduino. The Arduino only receives an an
 
 - **Location:** Limerick, Ireland — 230V / 50Hz / BS1363
 - **Material:** Carbon fibre
-- **Temperature range:** 0°C to 1000°C (depending on sensor)
+- **Temperature range:** 0°C to 1000°C (Sensor A)
 - **Project:** Internship — CESI École d'ingénieurs (2025–2026)
 - **Supervisor:** Anne
-
-
-
-xattr -d com.apple.quarantine "/Users/remirodriguez/Documents/CESI/A4/MI/Travail/variac_control/launch.command" && chmod +x "/Users/remirodriguez/Documents/CESI/A4/MI/Travail/variac_control/launch.command"

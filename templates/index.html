@@ -313,7 +313,7 @@
     <div class="step-row" id="s5"><span class="step-num">5</span><span style="font-size:13px">Stop — natural cooling</span></div>
   </div>
   <div class="btn-row">
-    <button class="btn btn-green" id="btn-start" onclick="startManual()">▶ Start</button>
+    <button class="btn btn-green" id="btn-cycle-start" onclick="startCycle()">▶ Start cycle</button>
     <button class="btn btn-red"   onclick="stopAll()">⏹ Stop — return to 0°</button>
   </div>
 </div>
@@ -448,31 +448,13 @@
       <div class="step-guide">
         <div class="step-guide-num">4</div>
         <div class="step-guide-text">
-          <span class="step-guide-icon">🔓</span>
-          <strong>Unlock the settings</strong> using the code:
-          <span class="code">1234</span>
-        </div>
-      </div>
-
-      <div class="step-guide">
-        <div class="step-guide-num">5</div>
-        <div class="step-guide-text">
-          <span class="step-guide-icon">📁</span>
-          Go to <strong>Settings</strong> and enter the following path to save temperature data:
-          <br><span class="code" id="csv-path-display">variac_control\CalexConfig\data\</span>
-        </div>
-      </div>
-
-      <div class="step-guide">
-        <div class="step-guide-num">6</div>
-        <div class="step-guide-text">
           <span class="step-guide-icon">▶️</span>
           <strong>Start the temperature recording</strong> in CalexConfig.
         </div>
       </div>
 
       <div class="step-guide">
-        <div class="step-guide-num">7</div>
+        <div class="step-guide-num">5</div>
         <div class="step-guide-text">
           <span class="step-guide-icon">🔍</span>
           Come back to this interface and <strong>run the Autotest</strong>.
@@ -481,7 +463,7 @@
       </div>
 
       <div class="step-guide">
-        <div class="step-guide-num">8</div>
+        <div class="step-guide-num">6</div>
         <div class="step-guide-text">
           <span class="step-guide-icon">🔧</span>
           <strong>Place the coupler back on the Variac knob.</strong>
@@ -490,7 +472,7 @@
       </div>
 
       <div class="step-guide">
-        <div class="step-guide-num">9</div>
+        <div class="step-guide-num">7</div>
         <div class="step-guide-text">
           <span class="step-guide-icon">🌡️</span>
           Once the autotest is complete, <strong>select the correct sensor</strong>
@@ -532,6 +514,7 @@ socket.on('disconnect', () => {
   document.getElementById('conn').textContent = 'Disconnected';
 });
 socket.on('update', d => { updateUI(d); pushLog(d); });
+socket.on('cycle_update', d => { updateCycleUI(d); });
 socket.on('status', d => {
   if (d.sensor_min !== undefined) updateSensorRange(d.active_sensor, d.sensor_min, d.sensor_max, d.sensor_name);
 });
@@ -637,12 +620,35 @@ function startCycle() {
     hold_min:   +document.getElementById('c-hmin').value,
     num_cycles: +document.getElementById('c-n').value,
   };
+  if (cfg.num_cycles < 1) { alert('Number of cycles must be at least 1'); return; }
+  if (cfg.temp_max <= cfg.temp_min) { alert('T max must be greater than T min'); return; }
+
+  // Update step display
   document.getElementById('s-tmax').textContent = cfg.temp_max;
   document.getElementById('s-tmin').textContent = cfg.temp_min;
   document.getElementById('s-hmax').textContent = cfg.hold_max;
   document.getElementById('s-hmin').textContent = cfg.hold_min;
-  fetch('/api/set_cycle', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cfg)});
-  fetch('/api/start', {method:'POST'});
+
+  // Reset step indicators
+  for (let i = 1; i <= 5; i++) {
+    document.getElementById('s'+i).classList.remove('active');
+  }
+  document.getElementById('s1').classList.add('active');
+  document.getElementById('c-prog-txt').textContent = 'Starting...';
+  document.getElementById('c-prog').style.width = '0%';
+
+  // Update button state
+  const b = document.getElementById('btn-cycle-start');
+  b.textContent = '● Running';
+  b.style.background = '#15803d';
+
+  fetch('/api/set_cycle', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(cfg)
+  }).then(() => {
+    fetch('/api/start_cycle', {method:'POST'});
+  });
 }
 
 // ── Autotest ──────────────────────────────────────────────────────────────────
@@ -860,6 +866,35 @@ function closeSetupGuide(e) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeSetupGuide();
 });
+
+
+// ── Cycle UI update ───────────────────────────────────────────────────────────
+function updateCycleUI(d) {
+  // Update active step
+  for (let i = 1; i <= 5; i++) {
+    document.getElementById('s'+i).classList.remove('active');
+  }
+  if (d.step >= 1 && d.step <= 5) {
+    document.getElementById('s'+d.step).classList.add('active');
+  }
+
+  // Update progress bar
+  const pct = Math.round((d.progress || 0) * 100);
+  document.getElementById('c-prog').style.width = pct + '%';
+
+  // Update progress text
+  const stepNames = ['', 'Ramp up', 'Hold at max', 'Ramp down', 'Hold at min', 'Complete'];
+  const stepName = stepNames[d.step] || '';
+  document.getElementById('c-prog-txt').textContent =
+    `Cycle ${d.current_cycle}/${d.num_cycles} — ${stepName} (${pct}%)`;
+
+  // If complete
+  if (d.step === 5 || d.complete) {
+    document.getElementById('c-prog-txt').textContent = 'Cycle complete — cooling down';
+    const b = document.getElementById('btn-cycle-start');
+    if (b) { b.textContent = '▶ Start cycle'; b.style.background = ''; }
+  }
+}
 
 </script>
 </body>

@@ -14,7 +14,7 @@ import serial.tools.list_ports
 # ── Config ───────────────────────────────────────────────────────────────────
 config = configparser.ConfigParser()
 config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
-config.read(config_path)
+config.read(config_path, encoding='utf-8-sig')
 
 HOST     = config.get('server',  'host',     fallback='0.0.0.0')
 PORT     = int(config.get('server',  'port',     fallback='5001'))
@@ -48,9 +48,15 @@ SENSORS = {
 }
 
 # ── Config capteur CSV ───────────────────────────────────────────────────────
-# Le dossier CalexConfig/data est toujours dans le même dossier que app.py
-SENSOR_CSV_DIR = os.path.join(os.path.dirname(__file__), 'CalexConfig', 'data')
-SENSOR_CSV_COLUMN = int(config.get('sensor_csv', 'column', fallback='3'))  # Filtered Temperature
+# Chemin selon l'OS
+if platform.system() == 'Windows':
+    SENSOR_CSV_DIR = config.get('sensor_csv', 'csv_dir',
+        fallback=r'C:\Users\Rahul.Samyal\OneDrive - University of Limerick\Research\Documents\CalexConfig log files')
+else:
+    # Mac : dossier local au projet
+    SENSOR_CSV_DIR = os.path.join(os.path.dirname(__file__), 'CalexConfig', 'data')
+
+SENSOR_CSV_COLUMN = int(config.get('sensor_csv', 'column', fallback='3'))
 os.makedirs(SENSOR_CSV_DIR, exist_ok=True)  # crée le dossier si absent
 
 # Dossier logs
@@ -151,9 +157,11 @@ def connect_sensor(sensor_id, port):
         return False
 
 # ── Envoi commande Arduino ────────────────────────────────────────────────────
-def send_to_arduino(cmd):
+def send_to_arduino(cmd, timeout=None):
     if state['arduino']:
         try:
+            if timeout is not None:
+                state['arduino'].timeout = timeout
             state['arduino'].reset_input_buffer()
             state['arduino'].write(f"{cmd}\n".encode())
             response = state['arduino'].readline().decode().strip()
@@ -263,9 +271,9 @@ def control_loop():
 
                 # Envoyer au moteur si la position a changé
                 if new_angle != state['current_angle']:
-                    resp = send_to_arduino(f'ANGLE:{new_angle}')
-                    if resp and resp.startswith('ACK:'):
-                        state['current_angle'] = new_angle
+                    print(f"PID -> ANGLE:{new_angle} (temp={round(temp,1)} target={target} error={round(error,1)})")
+                    send_to_arduino(f'ANGLE:{new_angle}', timeout=0.1)
+                    state['current_angle'] = new_angle
             else:
                 # Cible à 0 — retour à zéro
                 if state['current_angle'] != 0:
@@ -324,23 +332,16 @@ def status():
 
 @app.route('/api/scan_ports', methods=['POST'])
 def scan_ports():
-    # Arduino
     state['arduino_port'] = find_arduino()
     if state['arduino_port'] and state['arduino'] is None:
         state['arduino'] = connect_arduino(state['arduino_port'])
-
-    # Sondes — assigne automatiquement les ports trouvés
-    sensor_ports = find_all_sensors()
-    for i, (sensor_id, sensor) in enumerate(SENSORS.items()):
-        if i < len(sensor_ports) and sensor['serial'] is None:
-            connect_sensor(sensor_id, sensor_ports[i])
-
-    print(f"Arduino: {state['arduino_port']} | Sensors: {sensor_ports}")
+    # Ne pas essayer de connecter les capteurs — on lit juste le CSV
+    print(f"Arduino: {state['arduino_port']}")
     return jsonify({
         'arduino_port': state['arduino_port'],
         'arduino_ok':   state['arduino'] is not None,
-        'sensor_ports': sensor_ports,
-        'sensors': {k: {'port': v['port'], 'ok': v['serial'] is not None} for k, v in SENSORS.items()}
+        'sensor_ports': [],
+        'sensors': {k: {'port': None, 'ok': False} for k, v in SENSORS.items()}
     })
 
 @app.route('/api/set_sensor/<sensor_id>', methods=['POST'])
@@ -391,10 +392,14 @@ def stop():
         state['current_angle'] = 0
     return jsonify({'status': 'stopped'})
 
-@app.route('/api/set_target/<float:temp>', methods=['POST'])
+@app.route('/api/set_target/<temp>', methods=['POST'])
 def set_target(temp):
+    try:
+        temp = float(temp)
+    except ValueError:
+        return jsonify({'status': 'error'}), 400
     sensor = active_sensor()
-    temp = max(sensor['min_temp'], min(temp, sensor['max_temp']))
+    temp = max(float(sensor['min_temp']), min(temp, float(sensor['max_temp'])))
     state['target_temp'] = temp
     return jsonify({'status': 'ok', 'target': temp})
 
@@ -442,8 +447,12 @@ def test_motor():
     except Exception as e:
         return jsonify({'ok': False, 'response': str(e)})
 
-@app.route('/api/motor/go/<int:angle>', methods=['POST'])
+@app.route('/api/motor/go/<angle>', methods=['POST'])
 def motor_go(angle):
+    try:
+        angle = int(angle)
+    except ValueError:
+        return jsonify({'ok': False}), 400
     if state['arduino'] is None:
         return jsonify({'ok': False, 'response': 'Arduino not connected'})
     angle = max(0, min(380, angle))
@@ -487,7 +496,7 @@ def motor_reset():
     except Exception as e:
         return jsonify({'ok': False, 'response': str(e)})
 
-@app.route('/api/motor/speed/<int:delay_us>', methods=['POST'])
+@app.route('/api/motor/speed/<delay_us>', methods=['POST'])
 def motor_speed(delay_us):
     """Change la vitesse du moteur (µs entre chaque micro-pas)."""
     if state['arduino'] is None:
@@ -525,6 +534,81 @@ def test_sensor():
         })
     except Exception as e:
         return jsonify({'ok': False, 'response': str(e), 'temp': None, 'file': None})
+
+
+@app.route('/api/start_cycle', methods=['POST'])
+def start_cycle():
+    state['running'] = True
+    state['mode'] = 'cycle'
+    init_log()
+    # Lancer le cycle dans un thread séparé
+    threading.Thread(target=run_cycle, daemon=True).start()
+    return jsonify({'status': 'cycle_started'})
+
+def run_cycle():
+    """Exécute les cycles thermiques avec mise à jour de l'interface."""
+    cfg = state['cycle_config']
+    temp_max   = cfg['temp_max']
+    temp_min   = cfg['temp_min']
+    hold_max   = cfg['hold_max']
+    hold_min   = cfg['hold_min']
+    num_cycles = cfg['num_cycles']
+    total_steps = num_cycles * 4  # 4 étapes par cycle
+    steps_done  = 0
+
+    def emit_cycle(step, current_cycle, complete=False):
+        progress = steps_done / (total_steps) if total_steps > 0 else 0
+        socketio.emit('cycle_update', {
+            'step':          step,
+            'current_cycle': current_cycle,
+            'num_cycles':    num_cycles,
+            'progress':      round(progress, 2),
+            'complete':      complete,
+        })
+
+    for cycle_num in range(1, num_cycles + 1):
+        if not state['running']: break
+
+        # Étape 1 — Montée vers T max
+        state['target_temp'] = temp_max
+        emit_cycle(1, cycle_num)
+        # Attendre que la température soit atteinte (±5°C)
+        while state['running'] and abs(state['current_temp'] - temp_max) > 5:
+            time.sleep(1)
+        steps_done += 1
+
+        if not state['running']: break
+
+        # Étape 2 — Maintien à T max
+        emit_cycle(2, cycle_num)
+        for _ in range(int(hold_max)):
+            if not state['running']: break
+            time.sleep(1)
+        steps_done += 1
+
+        if not state['running']: break
+
+        # Étape 3 — Descente vers T min
+        state['target_temp'] = temp_min
+        emit_cycle(3, cycle_num)
+        while state['running'] and abs(state['current_temp'] - temp_min) > 5:
+            time.sleep(1)
+        steps_done += 1
+
+        if not state['running']: break
+
+        # Étape 4 — Maintien à T min
+        emit_cycle(4, cycle_num)
+        for _ in range(int(hold_min)):
+            if not state['running']: break
+            time.sleep(1)
+        steps_done += 1
+
+    # Étape 5 — Fin
+    state['target_temp'] = 0
+    state['running'] = False
+    emit_cycle(5, num_cycles, complete=True)
+    print("Cycle complete")
 
 @app.route('/api/shutdown', methods=['POST'])
 def shutdown():
@@ -573,7 +657,6 @@ def on_connect(auth=None):
 
 # ── Démarrage ─────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    clean_sensor_data_dir()
     print("=" * 44)
     print("   VARIAC CONTROL SYSTEM")
     print("=" * 44)

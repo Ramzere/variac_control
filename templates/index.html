@@ -173,8 +173,8 @@
     <div class="sensor-selector">
       <span class="sensor-label">Sensor:</span>
       <select class="sensor-select" id="sensor-select" onchange="setSensor(this.value)">
-        <option value="sensor_1">Sensor A — High (0–1000°C)</option>
-        <option value="sensor_2">Sensor B — Low (300–800°C)</option>
+        <option value="sensor_1">Sensor A — Low (0–800°C)</option>
+        <option value="sensor_2">Sensor B — High (250–1500°C)</option>
       </select>
       <span class="sensor-badge low" id="sensor-badge">0–400°C</span>
     </div>
@@ -235,14 +235,14 @@
     <div class="chk">
       <div class="chk-ico wait" id="ico-temp">?</div>
       <div style="flex:1">
-        <div class="chk-label">Temperature sensor — CalexConfig CSV</div>
-        <div class="chk-sub" id="sub-temp">Launch CalexConfig and start measurement before running this test</div>
+        <div class="chk-label">Temperature sensor — <span id="chk-sensor-app">CalexConfig</span></div>
+        <div class="chk-sub" id="sub-temp">Launch the sensor application and start measurement before running this test</div>
       </div>
       <div class="chk-badge" id="badge-temp">Waiting</div>
     </div>
     <div id="calex-notice" style="margin:8px 0 0 42px;padding:10px 14px;background:#1e3a5f;border-radius:8px;border-left:3px solid #3b82f6;display:none">
-      <div style="font-size:12px;font-weight:600;color:#60a5fa;margin-bottom:4px">⚠ CalexConfig required</div>
-      <div style="font-size:12px;color:#94a3b8">1. Open <strong style="color:#e2e8f0">CalexConfig</strong> application<br>2. Start the temperature measurement<br>3. Make sure the CSV is saved in <strong style="color:#e2e8f0">variac_control/CalexConfig/data/</strong><br>4. Run autotest again</div>
+      <div style="font-size:12px;font-weight:600;color:#60a5fa;margin-bottom:4px">⚠ <span id="notice-app-name">CalexConfig</span> required</div>
+      <div style="font-size:12px;color:#94a3b8">1. Open <strong style="color:#e2e8f0" id="notice-app-name-2">CalexConfig</strong> application<br>2. Start the temperature measurement<br>3. Run autotest again</div>
     </div>
   </div>
   <div class="btn-row">
@@ -449,7 +449,7 @@
         <div class="step-guide-num">4</div>
         <div class="step-guide-text">
           <span class="step-guide-icon">▶️</span>
-          <strong>Start the temperature recording</strong> in CalexConfig.
+          <strong>Start the temperature recording</strong> in <span id="guide-app-name-2">CalexConfig</span>.
         </div>
       </div>
 
@@ -539,13 +539,23 @@ async function setSensor(sensorId) {
   // Update setup guide app name
   const appNames = {
     'sensor_1': { app: 'CalexConfig',       hint: 'Sensor A — Low range: CalexConfig' },
-    'sensor_2': { app: 'TBD — sensor app',  hint: 'Sensor B — High range: app name to be confirmed' },
+    'sensor_2': { app: 'Optris Compact',     hint: 'Sensor B — High range: Optris Compact' },
   };
   const info = appNames[sensorId] || appNames['sensor_1'];
   const appEl   = document.getElementById('guide-app-name');
   const hintEl  = document.getElementById('guide-app-hint');
+  const el2 = document.getElementById('guide-app-name-2');
+  if (el2) el2.textContent = info.app;  
   if (appEl)  appEl.textContent  = info.app;
   if (hintEl) hintEl.textContent = '(' + info.hint + ')';
+
+  // Update autotest sensor label and notice dynamically
+  const chkApp = document.getElementById('chk-sensor-app');
+  if (chkApp) chkApp.textContent = info.app;
+  const noticeApp  = document.getElementById('notice-app-name');
+  const noticeApp2 = document.getElementById('notice-app-name-2');
+  if (noticeApp)  noticeApp.textContent  = info.app;
+  if (noticeApp2) noticeApp2.textContent = info.app;
 }
 
 function updateSensorRange(sensorId, min, max, name) {

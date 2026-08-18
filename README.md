@@ -235,7 +235,7 @@ Two sensors supported — selected from the web interface header dropdown:
 | Sensor | Range | Software |
 |---|---|---|
 | Sensor A | 0 – 1000°C | CalexConfig |
-| Sensor B | 300 – 800°C | TBD |
+| Sensor B | 250 – 1500°C | Optris Compact |
 
 The system reads the **most recent CSV file** from the configured folder. Only one sensor is active at a time. Switching automatically recalibrates the slider, chart Y-axis, and constrains the target temperature to the sensor range.
 

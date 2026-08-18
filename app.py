@@ -47,32 +47,42 @@ SENSORS = {
     }
 }
 
-# ── Config capteur CSV ───────────────────────────────────────────────────────
-# Chemin selon l'OS
-if platform.system() == 'Windows':
-    SENSOR_CSV_DIR = config.get('sensor_csv', 'csv_dir',
-        fallback=r'C:\Users\Rahul.Samyal\OneDrive - University of Limerick\Research\Documents\CalexConfig log files')
-else:
-    # Mac : dossier local au projet
-    SENSOR_CSV_DIR = os.path.join(os.path.dirname(__file__), 'CalexConfig', 'data')
+# ── Config capteur CSV — un dossier par capteur ──────────────────────────────
+def get_sensor_csv_dir(sensor_id):
+    """Retourne le dossier CSV pour un capteur donné selon l'OS."""
+    if platform.system() == 'Windows':
+        if sensor_id == 'sensor_1':
+            return config.get('sensor_csv', 'csv_dir_1',
+                fallback=r'C:\Users\Rahul.Samyal\OneDrive - University of Limerick\Research\Documents\CalexConfig log files')
+        else:
+            return config.get('sensor_csv', 'csv_dir_2',
+                fallback=r'C:\Users\Rahul.Samyal\OneDrive - University of Limerick\Research\Documents\Optais log files')
+    else:
+        # Mac : dossiers locaux au projet
+        if sensor_id == 'sensor_1':
+            return os.path.join(os.path.dirname(__file__), 'CalexConfig', 'data')
+        else:
+            return os.path.join(os.path.dirname(__file__), 'Optais', 'data')
 
-SENSOR_CSV_COLUMN = int(config.get('sensor_csv', 'column', fallback='3'))
-os.makedirs(SENSOR_CSV_DIR, exist_ok=True)  # crée le dossier si absent
+def get_sensor_csv_column(sensor_id=None):
+    if sensor_id is None:
+        sensor_id = state.get('active_sensor', 'sensor_1')
+    if sensor_id == 'sensor_1':
+        return int(config.get('sensor_csv', 'column_1', fallback='3'))
+    else:
+        return int(config.get('sensor_csv', 'column_2', fallback='3'))
+    
+# Créer les dossiers Mac si absents
+if platform.system() != 'Windows':
+    os.makedirs(get_sensor_csv_dir('sensor_1'), exist_ok=True)
+    os.makedirs(get_sensor_csv_dir('sensor_2'), exist_ok=True)
 
 # Dossier logs
 LOG_DIR = os.path.join(os.path.dirname(__file__), 'logs')
 # ── Nettoyage du dossier CalexConfig/data au démarrage ───────────────────────
 def clean_sensor_data_dir():
-    if os.path.isdir(SENSOR_CSV_DIR):
-        files = [f for f in os.listdir(SENSOR_CSV_DIR) if f.lower().endswith('.csv')]
-        for f in files:
-            try:
-                os.remove(os.path.join(SENSOR_CSV_DIR, f))
-            except Exception as e:
-                print(f"Could not delete {f}: {e}")
-        if files:
-            print(f"Cleaned {len(files)} old CSV file(s) from {SENSOR_CSV_DIR}")
-os.makedirs(LOG_DIR, exist_ok=True)
+    # On ne supprime plus les fichiers — CalexConfig/Optais gèrent leurs propres fichiers
+    pass
 
 print(f"Config : {config_path}")
 print(f"Serveur : {HOST}:{PORT}")
@@ -172,13 +182,16 @@ def send_to_arduino(cmd, timeout=None):
     return None
 
 # ── Lecture température ───────────────────────────────────────────────────────
-def get_latest_csv():
-    """Retourne le fichier CSV le plus récent dans SENSOR_CSV_DIR."""
-    if not SENSOR_CSV_DIR or not os.path.isdir(SENSOR_CSV_DIR):
+def get_latest_csv(sensor_id=None):
+    """Retourne le fichier CSV le plus récent pour le capteur actif."""
+    if sensor_id is None:
+        sensor_id = state.get('active_sensor', 'sensor_1')
+    csv_dir = get_sensor_csv_dir(sensor_id)
+    if not csv_dir or not os.path.isdir(csv_dir):
         return None
     files = [
-        os.path.join(SENSOR_CSV_DIR, f)
-        for f in os.listdir(SENSOR_CSV_DIR)
+        os.path.join(csv_dir, f)
+        for f in os.listdir(csv_dir)
         if f.lower().endswith('.csv')
     ]
     if not files:
@@ -204,9 +217,10 @@ def read_temperature():
         # Les 5 premières lignes sont des headers
         for line in reversed(lines):
             parts = line.strip().split(',')
-            if len(parts) >= SENSOR_CSV_COLUMN + 1:
+            col = get_sensor_csv_column()
+            if len(parts) >= col + 1:
                 try:
-                    temp = float(parts[SENSOR_CSV_COLUMN])
+                    temp = float(parts[col])
                     state['current_temp'] = temp
                     state['sensor_csv_ok'] = True
                     return temp
@@ -513,15 +527,19 @@ def motor_speed(delay_us):
 
 @app.route('/api/test_sensor', methods=['POST'])
 def test_sensor():
-    """Vérifie que le fichier CSV CalexConfig est lisible et retourne la dernière temp."""
-    csv_path = get_latest_csv()
+    """Vérifie que le fichier CSV du capteur actif est lisible."""
+    sensor_id = state.get('active_sensor', 'sensor_1')
+    sensor = active_sensor()
+    csv_dir = get_sensor_csv_dir(sensor_id)
+    csv_path = get_latest_csv(sensor_id)
     if not csv_path:
         msg = 'No CSV file found'
-        if not SENSOR_CSV_DIR:
+        if not csv_dir:
             msg = 'csv_dir not configured in config.ini'
-        elif not os.path.isdir(SENSOR_CSV_DIR):
-            msg = f'Folder not found: {SENSOR_CSV_DIR}'
-        return jsonify({'ok': False, 'response': msg, 'temp': None, 'file': None})
+        elif not os.path.isdir(csv_dir):
+            msg = f'Folder not found: {csv_dir}'
+        return jsonify({'ok': False, 'response': msg, 'temp': None, 'file': None,
+                        'sensor': sensor['name']})
     try:
         temp = read_temperature()
         filename = os.path.basename(csv_path)

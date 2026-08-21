@@ -14,14 +14,16 @@ The system physically rotates the Variac knob using a stepper motor controlled b
 
 | Component | Model | Role |
 |---|---|---|
-| Variac | Clairtronic 10534 — 5A 230V | Adjustable power supply |
+| Variac | Clairtronic 10534 — 5A 230V | Adjustable power supply (0V–270V) |
 | Stepper motor | NEMA 23 — 23HS22-2804S 2.8A 1.26Nm | Rotates the Variac knob |
 | Motor driver | TB6600 | Drives the NEMA 23 (up to 4A) |
 | Microcontroller | Arduino Nano CH340 USB-C | Receives commands, generates step pulses |
 | 3D coupler | PLA+ jaw coupler | Links motor shaft to Variac knob |
-| USB hub | UGREEN 4-port USB 3.0 | Single connection to PC |
-| Power supply | 12V–24V, 3A minimum | Powers motor via TB6600 |
-| Temperature sensor | CalexConfig compatible | 0–1000°C, CSV output |
+| Motor base | PLA+ printed base | Holds motor, driver, PSU and USB hub |
+| Power supply | Mean Well LRS-50-12 — 12V 4.2A | Powers motor via TB6600 (mounted on base) |
+| USB hub | UGREEN 4-port USB 3.0 | Single PC connection for all USB devices |
+| Sensor A | CalexConfig pyrometer | 0–800°C — reads CSV file |
+| Sensor B | Optris CT 3MH3CF | 250–1800°C — reads via serial port COM7 |
 
 ---
 
@@ -40,7 +42,7 @@ The system physically rotates the Variac knob using a stepper motor controlled b
 
 | Supply | TB6600 | Wire color |
 |---|---|---|
-| +12V (or +24V) | VCC | Red |
+| +12V | VCC | Red |
 | GND | GND | Black |
 
 ### TB6600 → NEMA 23
@@ -66,9 +68,14 @@ The system physically rotates the Variac knob using a stepper motor controlled b
 
 ---
 
-## 3D Printed Coupler
+## 3D Printed Parts
 
-Jaw coupler that grips the 10 knurls of the Variac knob — no permanent modification to the equipment.
+| Part | Role |
+|---|---|
+| Jaw coupler (PLA+) | Grips the 10 knurls of the Variac knob — no permanent modification |
+| Motor base (PLA+) | Holds motor, TB6600 driver, LRS-50-12 PSU and USB hub |
+
+**Coupler specifications:**
 
 | Parameter | Value |
 |---|---|
@@ -101,12 +108,12 @@ pip install flask flask-socketio pyserial
 ```
 variac_control/
 ├── app.py                  # Flask server + PID + sensor reading
-├── config.ini              # Configuration (port, baudrate, sensors, PID)
+├── config.ini              # Configuration (ports, baudrates, sensors, PID)
 ├── launch.command          # Mac launcher (double-click)
 ├── launch.bat              # Windows launcher (double-click)
 ├── CalexConfig/
-│   └── data/               # Drop CalexConfig CSV files here (Mac)
-├── logs/                   # CSV data logs (auto-created)
+│   └── data/               # Drop CalexConfig CSV files here (Mac only)
+├── logs/                   # CSV data logs (auto-created at each session)
 └── templates/
     └── index.html          # Web interface
 ```
@@ -119,7 +126,7 @@ variac_control/
 
 ```bash
 git clone https://github.com/Ramzere/variac_control.git
-cd variac-control/variac_control
+cd variac_control
 pip3 install flask flask-socketio pyserial
 chmod +x launch.command
 xattr -d com.apple.quarantine launch.command
@@ -131,19 +138,20 @@ Double-click `launch.command` — the browser opens automatically at `http://loc
 
 ```bash
 git clone https://github.com/Ramzere/variac_control.git
-cd variac-control\variac_control
+cd variac_control
 pip install flask flask-socketio pyserial
 ```
 
 Double-click `launch.bat` — the browser opens automatically at `http://localhost:5001`.
 
-> **Note:** Python must be installed with "Add Python to PATH" checked. Install the CH340 driver if the Arduino is not detected.
+> **Note:** Python must be installed with "Add Python to PATH" checked.  
+> Install the CH340 driver (CH341SER.EXE) if the Arduino is not detected.
 
 ---
 
 ## Configuration
 
-Edit `config.ini` to match your setup:
+Edit `config.ini` to match your setup. Open with Notepad++ and save as **UTF-8 without BOM**.
 
 ```ini
 [server]
@@ -151,9 +159,8 @@ host = 0.0.0.0
 port = 5001
 
 [arduino]
-# Force port if auto-detection fails
-# Windows: port = COM5
-# Mac: port = /dev/tty.usbserial-110
+# Check Device Manager -> Ports (COM & LPT) -> USB-SERIAL CH340
+port = COM5
 baudrate = 9600
 timeout = 2
 
@@ -164,45 +171,46 @@ d = 0.0
 bangbang_threshold = 20
 
 [sensor_1]
-name = Sensor A — High range
+name = Sensor A — Low range
 min_temp = 0
-max_temp = 1000
-
-[sensor_2]
-name = Sensor B — Low range
-min_temp = 300
 max_temp = 800
 
-[sensor_csv]
-# Windows: path to CalexConfig output folder
-csv_dir = C:\Users\Rahul.Samyal\OneDrive - University of Limerick\Research\Documents\CalexConfig log files
-column = 3
-```
+[sensor_2]
+name = Sensor B — High range
+min_temp = 250
+max_temp = 1800
 
-> On Mac the CSV folder defaults to `variac_control/CalexConfig/data/` automatically.
+[optris]
+# Serial port for Optris CT 3MH — close CompactConnect before starting
+port = COM7
+baudrate = 115200
+
+[sensor_csv]
+# Folder where CalexConfig saves its CSV log files
+csv_dir_1 = C:\Users\...\CalexConfig log files
+# Column index: 2=Unfiltered, 3=Filtered (recommended), 4=Sensor
+column_1 = 3
+```
 
 ---
 
 ## Usage
 
-1. Connect Arduino Nano via USB hub
-2. Connect power supply (12V or 24V) to TB6600
+1. Connect Arduino Nano and sensors via USB hub
+2. Power on the LRS-50-12 supply (TB6600 green LED on)
 3. Launch the server (`launch.command` on Mac, `launch.bat` on Windows)
 4. Open `http://localhost:5001` in your browser
 5. Click **? Setup guide** in the top bar and follow the steps
-6. Run **Autotest** — verifies serial port, Arduino communication, motor and sensor
-7. Select the active temperature sensor (Sensor A or B) from the header dropdown
+6. Run **Autotest** — verifies port, Arduino, motor and sensor
+7. Select the active sensor (Sensor A or B) from the header dropdown
 8. Use **Manual** mode or program **Cycles**
 
-### Setup guide (startup procedure)
+### Sensor selection
 
-1. Cut motor power — place jaw coupler on the Variac knob
-2. Power on motor supply — remove coupler without rotating
-3. Open CalexConfig and set output folder to the configured path
-4. Start temperature recording in CalexConfig
-5. Run Autotest — all checks must be green
-6. Place coupler back on the Variac knob
-7. Select the correct sensor from the header dropdown
+| Sensor | Range | Protocol | Prerequisite |
+|---|---|---|---|
+| Sensor A — CalexConfig | 0–800°C | CSV file (reads most recent) | CalexConfig must be recording |
+| Sensor B — Optris CT 3MH | 250–1800°C | Serial COM7 @ 115200 baud | CompactConnect must be **closed** |
 
 ### Interface tabs
 
@@ -212,59 +220,52 @@ column = 3
 | 🎛️ Manual | Target temperature + PID regulation |
 | 🔄 Cycles | Programmed thermal cycles (T max/min, hold times, repetitions) |
 | 📋 Log | Live data log — export to CSV |
-| ⚙️ Motor | Direct motor control — angle input, quick positions, reset |
+| ⚙️ Motor | Direct motor control — angle input, quick positions, speed, reset |
 
 ### Arduino serial commands
 
 | Command | Response | Action |
 |---|---|---|
-| `ANGLE:170` | `ACK:1511` | Go to 170° |
-| `HOME` | `HOME_OK` | Return to 0° (physical stop) |
-| `POS` | `POS:0` | Read current position (micro-steps) |
+| `ANGLE:170` | `ACK:1511` | Go to 170° (absolute position) |
+| `HOME` | `HOME_OK` | Return to 0° step by step |
+| `POS` | `POS:0` | Read current position in micro-steps |
 | `RESETPOS` | `RESET_OK` | Set current position as 0° (no movement) |
-| `SPEED:150` | `SPEED_OK:150` | Set step delay in µs |
-| `STOP` | `STOPPED` | Disable motor (no holding torque) |
-| `START` | `STARTED` | Enable motor |
+| `SPEED:150` | `SPEED_OK:150` | Set step delay in µs (50–5000) |
+| `STOP` | `STOPPED` | Disable driver (cuts holding torque) |
+| `START` | `STARTED` | Re-enable driver |
 
 ---
 
 ## Temperature Sensors
 
-Two sensors supported — selected from the web interface header dropdown:
+Two sensors supported — selected from the header dropdown. Only one active at a time.
 
-| Sensor | Range | Software |
-|---|---|---|
-| Sensor A | 0 – 1000°C | CalexConfig |
-| Sensor B | 250 – 1500°C | Optris Compact |
+| Sensor | Range | Software | Data source |
+|---|---|---|---|
+| Sensor A | 0–800°C | CalexConfig | Most recent CSV in configured folder |
+| Sensor B | 250–1800°C | Optris CT 3MH3CF | Serial port COM7, command 0x01, formula: (byte1×256 + byte2 − 1000) / 10 |
 
-The system reads the **most recent CSV file** from the configured folder. Only one sensor is active at a time. Switching automatically recalibrates the slider, chart Y-axis, and constrains the target temperature to the sensor range.
-
-**CalexConfig CSV format:**
-- 5 header rows to skip
-- Column 3 = Filtered Temperature (used by default)
-- Updated every second
+Switching sensors automatically recalibrates the slider, chart Y-axis, and constrains the target temperature.
 
 ---
 
 ## PID Control
 
-The PID loop runs in Python. The Arduino only receives an angle command and moves the motor.
+The PID loop runs in Python. The Arduino only receives an `ANGLE:XXX` command and moves the motor accordingly.
 
-**Strategy:**
-- **Phase 1 — Bang-bang:** motor moves at full speed when error > threshold
-- **Phase 2 — PID:** fine-tunes motor angle to hold target temperature precisely
-- **Stop:** motor returns to 0° (0V output) without cutting power
+**Control strategy:**
+- **Phase 1 — Bang-bang:** motor runs at full speed when `|error| > bangbang_threshold`
+- **Phase 2 — PID:** fine correction when close to target
+- **Stop:** motor returns to 0° (0V output) without cutting motor power
 
 **Parameters (adjust in `config.ini`):**
 
-| Parameter | Value | Role |
+| Parameter | Default | Role |
 |---|---|---|
-| P | 0.3 | Corrects instantaneous error |
-| I | 0.01 | Corrects accumulated error |
-| D | 0.0 | Anticipates rate of change |
-| bangbang_threshold | 5 | Switch from bang-bang to PID (°C) |
-
-> Calibrate PID parameters on real hardware. Test with a safe material before using carbon fibre.
+| P | 1.2 | Proportional — corrects instantaneous error |
+| I | 0.05 | Integral — corrects accumulated error |
+| D | 0.0 | Derivative — anticipates rate of change |
+| bangbang_threshold | 20°C | Error threshold for bang-bang phase |
 
 ---
 
@@ -275,12 +276,14 @@ The PID loop runs in Python. The Arduino only receives an angle command and move
 | System architecture | ✅ Done |
 | Hardware selection and validation | ✅ Done |
 | NEMA 23 motor test (TB6600) | ✅ Done |
-| 3D coupler printed and fitted | ✅ Done |
+| 3D coupler and motor base printed | ✅ Done |
+| LRS-50-12 PSU mounted on base | ✅ Done |
 | Arduino firmware | ✅ Done |
 | Python server + web interface | ✅ Done |
 | Autotest (port + Arduino + motor + sensor) | ✅ Done |
 | Mac + Windows compatibility | ✅ Done |
-| Temperature sensor integration (CalexConfig) | ✅ Done |
+| Sensor A integration (CalexConfig CSV) | ✅ Done |
+| Sensor B integration (Optris serial) | ✅ Done |
 | Manual mode with PID | ✅ Done |
 | Cycle mode | ✅ Done |
 | PID calibration on real Variac | 🔲 To do |
@@ -291,7 +294,7 @@ The PID loop runs in Python. The Arduino only receives an angle command and move
 ## Context
 
 - **Location:** Limerick, Ireland — 230V / 50Hz / BS1363
-- **Material:** Carbon fibre
-- **Temperature range:** 0°C to 1000°C (Sensor A)
+- **Material processed:** Carbon fibre
 - **Project:** Internship — CESI École d'ingénieurs (2025–2026)
-- **Supervisor:** Anne
+- **Supervisor:** Anne McLoughlin & Rahul Samyal
+- **GitHub:** [github.com/Ramzere/variac_control](https://github.com/Ramzere/variac_control)

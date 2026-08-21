@@ -173,8 +173,8 @@
     <div class="sensor-selector">
       <span class="sensor-label">Sensor:</span>
       <select class="sensor-select" id="sensor-select" onchange="setSensor(this.value)">
-        <option value="sensor_1">Sensor A — Low (0–800°C)</option>
-        <option value="sensor_2">Sensor B — High (250–1500°C)</option>
+        <option value="sensor_1">Sensor A — CalexConfig (0–800°C)</option>
+        <option value="sensor_2">Sensor B — Optris (250–1800°C)</option>
       </select>
       <span class="sensor-badge low" id="sensor-badge">0–400°C</span>
     </div>
@@ -242,7 +242,7 @@
     </div>
     <div id="calex-notice" style="margin:8px 0 0 42px;padding:10px 14px;background:#1e3a5f;border-radius:8px;border-left:3px solid #3b82f6;display:none">
       <div style="font-size:12px;font-weight:600;color:#60a5fa;margin-bottom:4px">⚠ <span id="notice-app-name">CalexConfig</span> required</div>
-      <div style="font-size:12px;color:#94a3b8">1. Open <strong style="color:#e2e8f0" id="notice-app-name-2">CalexConfig</strong> application<br>2. Start the temperature measurement<br>3. Run autotest again</div>
+      <div style="font-size:12px;color:#94a3b8" id="notice-instructions">1. Open <strong style="color:#e2e8f0" id="notice-app-name-2">CalexConfig</strong> application<br>2. Start the temperature measurement<br>3. Run autotest again</div>
     </div>
   </div>
   <div class="btn-row">
@@ -272,7 +272,7 @@
     <label>Target temperature</label>
     <input type="range" id="m-slider" min="0" max="400" value="0" oninput="setTarget(this.value)">
     <div style="display:flex;gap:12px;align-items:center;margin-top:8px">
-      <input type="number" id="m-num" min="0" max="400" value="0" oninput="setTarget(this.value)" style="width:120px">
+      <input type="number" id="m-num" min="0" max="400" value="0" oninput="previewTarget(this.value)" onchange="setTarget(this.value)" onkeydown="if(event.key==='Enter') setTarget(this.value)" style="width:120px">
       <span style="color:#94a3b8">°C</span>
       <span class="range-info" id="m-range-info">Range: 0 – 400°C</span>
     </div>
@@ -440,7 +440,7 @@
           <span class="step-guide-icon">🌡️</span>
           Open the <strong id="guide-app-name">CalexConfig</strong> application on the computer.
           <br><span style="font-size:12px;color:#64748b" id="guide-app-hint">
-            (Sensor A — Low range: CalexConfig)
+            (Sensor A: CalexConfig — Sensor B: Optris, close CompactConnect first)
           </span>
         </div>
       </div>
@@ -538,8 +538,8 @@ async function setSensor(sensorId) {
   }
   // Update setup guide app name
   const appNames = {
-    'sensor_1': { app: 'CalexConfig',       hint: 'Sensor A — Low range: CalexConfig' },
-    'sensor_2': { app: 'Optris Compact',     hint: 'Sensor B — High range: Optris Compact' },
+    'sensor_1': { app: 'CalexConfig', hint: 'Sensor A — CalexConfig (0–800°C)' },
+    'sensor_2': { app: 'Optris',         hint: 'Sensor B — Optris (250–1800°C) — port série COM7' },
   };
   const info = appNames[sensorId] || appNames['sensor_1'];
   const appEl   = document.getElementById('guide-app-name');
@@ -554,8 +554,17 @@ async function setSensor(sensorId) {
   if (chkApp) chkApp.textContent = info.app;
   const noticeApp  = document.getElementById('notice-app-name');
   const noticeApp2 = document.getElementById('notice-app-name-2');
+  const noticeInst = document.getElementById('notice-instructions');
   if (noticeApp)  noticeApp.textContent  = info.app;
   if (noticeApp2) noticeApp2.textContent = info.app;
+  // Update notice instructions based on sensor type
+  if (noticeInst) {
+    if (sensorId === 'sensor_2') {
+      noticeInst.innerHTML = '1. Close <strong style="color:#e2e8f0">CompactConnect</strong> if open (only one connection at a time)<br>2. Select Sensor B in the header dropdown<br>3. Run autotest again — Optris connects automatically';
+    } else {
+      noticeInst.innerHTML = '1. Open <strong style="color:#e2e8f0">CalexConfig</strong> application<br>2. Start the temperature measurement<br>3. Run autotest again';
+    }
+  }
 }
 
 function updateSensorRange(sensorId, min, max, name) {
@@ -601,8 +610,16 @@ function updateUI(d) {
 }
 
 // ── Target ────────────────────────────────────────────────────────────────────
+function previewTarget(v) {
+  const n = parseInt(v);
+  if (!isNaN(n)) {
+    document.getElementById('m-slider').value = Math.min(sensorMax, Math.max(sensorMin, n));
+  }
+}
+
 function setTarget(v) {
-  v = Math.min(sensorMax, Math.max(sensorMin, parseInt(v)||sensorMin));
+  const n = parseInt(v);
+  v = Math.min(sensorMax, Math.max(sensorMin, isNaN(n) ? sensorMin : n));
   document.getElementById('m-slider').value = v;
   document.getElementById('m-num').value    = v;
   fetch('/api/set_target/' + v, {method:'POST'});
@@ -713,7 +730,8 @@ async function runAutotest() {
   }
 
   // ── Check sensor CSV ──────────────────────────────────────────────────────
-  setChk('temp', 'spin', '⟳', 'Reading...', 'Looking for latest CalexConfig CSV...');
+  const isOptris = activeSensor === 'sensor_2';
+  setChk('temp', 'spin', '⟳', 'Reading...', isOptris ? 'Reading Optris via serial port...' : 'Looking for latest CalexConfig CSV...');
   await delay(400);
   const sensorRes = await fetch('/api/test_sensor', {method:'POST'}).then(r=>r.json());
   if (sensorRes.ok) {
